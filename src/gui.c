@@ -44,6 +44,10 @@
 
 unsigned long __stack = 60000;   /* force a generous stack (deep recursion) */
 
+/* AmigaDOS version cookie (the C: Version command / $VER reads this) */
+static const char verstag[] __attribute__((used)) =
+    "$VER: AmiFindGUI 1.0 (07.06.2026)";
+
 /* --- temporary boot-trace: writes progress markers to SYS:AFtest/trace --- */
 static BPTR g_tr = 0;
 static void TR(CONST_STRPTR s)
@@ -93,6 +97,8 @@ struct Gui {
     char           savePath[210];  /* In text,   preserved across resize/icon */
     BOOL           stopReq;        /* Stop pressed during a search           */
     BOOL           closeReq;       /* window closed during a search          */
+    BOOL           resizePending;  /* NEWSIZE arrived mid-search -> relayout after */
+    BOOL           outOfMem;       /* a result was dropped (AllocVec failed)  */
     ULONG          uiCounter;
 
     struct MsgPort   *appPort;     /* AppIcon message port (iconified)        */
@@ -105,6 +111,8 @@ struct Gui {
 
 #define MENU_ICONIFY 1
 #define MENU_QUIT    2
+
+static void relayout(struct Gui *g);   /* defined below; used by doSearch */
 
 /* ------------------------------------------------------------------ */
 /* result list management                                             */
@@ -123,7 +131,7 @@ static void addResult(struct Gui *g, CONST_STRPTR text)
     int len = (int)strlen((const char *)text) + 1;
     struct Node *n = (struct Node *)AllocVec(sizeof(struct Node) + len,
                                              MEMF_CLEAR);
-    if (!n) return;
+    if (!n) { g->outOfMem = TRUE; return; }   /* note the drop for the status */
     n->ln_Name = (char *)(n + 1);
     CopyMem((APTR)text, n->ln_Name, len);
     AddTail(&g->results, n);
@@ -133,7 +141,7 @@ static void setStatus(struct Gui *g, CONST_STRPTR text)
 {
     strncpy(g->status, (const char *)text, sizeof g->status - 1);
     g->status[sizeof g->status - 1] = '\0';
-    if (g->gStatus)
+    if (g->win && g->gStatus)        /* both must be live (iconified -> neither) */
         GT_SetGadgetAttrs(g->gStatus, g->win, NULL,
                           GTTX_Text, (ULONG)g->status, TAG_END);
 }
@@ -180,6 +188,11 @@ static BOOL pumpMessages(struct Gui *g)
         case IDCMP_REFRESHWINDOW:
             GT_BeginRefresh(g->win);
             GT_EndRefresh(g->win, TRUE);
+            break;
+        case IDCMP_NEWSIZE:
+            /* can't relayout mid-search (it frees the gadgets we're driving);
+             * remember it and rebuild once the scan returns. */
+            g->resizePending = TRUE;
             break;
         default:
             break;
@@ -253,6 +266,7 @@ static void doSearch(struct Gui *g)
     freeResults(g);
 
     g->stopReq = FALSE;
+    g->outOfMem = FALSE;
     g->uiCounter = 0;
     GT_SetGadgetAttrs(g->gSearch, g->win, NULL, GA_Disabled, TRUE, TAG_END);
     setStatus(g, "Searching...");
@@ -276,8 +290,12 @@ static void doSearch(struct Gui *g)
         strcpy(buf, "");
         for (j = i - 1; j >= 0; j--) { int l = (int)strlen(buf); buf[l] = num[j]; buf[l+1] = 0; }
         strcat(buf, st.aborted ? " match(es) - stopped" : " match(es)");
+        if (g->outOfMem) strcat(buf, " (truncated: low mem)");
         setStatus(g, buf);
     }
+
+    /* a resize that arrived mid-search was deferred; apply it now */
+    if (g->resizePending) { g->resizePending = FALSE; relayout(g); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -350,6 +368,8 @@ static BOOL makeGadgets(struct Gui *g)
     y += row + 2;
     ng.ng_LeftEdge = cl; ng.ng_TopEdge = y;
     ng.ng_Width = cr - cl; ng.ng_Height = cb - y;
+    if (ng.ng_Width  < 8) ng.ng_Width  = 8;
+    if (ng.ng_Height < 8) ng.ng_Height = 8;   /* tall fonts can drive this <=0 */
     ng.ng_GadgetText = NULL; ng.ng_GadgetID = GAD_LIST;
     gad = g->gList = CreateGadget(LISTVIEW_KIND, gad, &ng,
                                   GTLV_Labels, (ULONG)&g->results,
@@ -384,6 +404,14 @@ static void relayout(struct Gui *g)
         AddGList(g->win, g->glist, ~0, -1, NULL);
         RefreshGList(g->glist, g->win, NULL, -1);
         GT_RefreshWindow(g->win, NULL);
+    } else {
+        /* low memory: makeGadgets failed mid-chain. Free the partial,
+         * never-added list and clear every gadget pointer so nothing
+         * (saveFields, doSearch, setStatus, the next relayout) touches
+         * freed gadgets. */
+        if (g->glist) { FreeGadgets(g->glist); g->glist = NULL; }
+        g->gPattern = g->gPath = g->gPick = g->gSearch =
+        g->gStop    = g->gStatus = g->gList = NULL;
     }
 }
 
@@ -456,6 +484,9 @@ static void closeWin(struct Gui *g)
     if (g->menu)            { FreeMenus(g->menu); g->menu = NULL; }
     if (g->win)   { CloseWindow(g->win);          g->win = NULL; }
     if (g->glist) { FreeGadgets(g->glist);        g->glist = NULL; }
+    /* the individual gadget pointers point into the freed list */
+    g->gPattern = g->gPath = g->gPick = g->gSearch =
+    g->gStop    = g->gStatus = g->gList = NULL;
     if (g->vi)    { FreeVisualInfo(g->vi);         g->vi = NULL; }
     if (g->scr)   { UnlockPubScreen(NULL, g->scr); g->scr = NULL; }
 }
@@ -476,7 +507,13 @@ static void doIconify(struct Gui *g)
     closeWin(g);
     g->appIcon = AddAppIconA(0L, 0L, (STRPTR)"AmiFind", g->appPort,
                              (BPTR)0, g->dobj, NULL);
-    if (!g->appIcon) { buildWindow(g); return; }  /* failed: reopen */
+    if (!g->appIcon) {                            /* failed: reopen */
+        if (!buildWindow(g))
+            g->closeReq = TRUE;  /* no window AND no AppIcon: exit cleanly
+                                  * instead of Wait()ing forever on a port
+                                  * nothing will ever signal */
+        return;
+    }
     g->iconified = TRUE;
 }
 
@@ -487,7 +524,9 @@ static void doUniconify(struct Gui *g)
     if (g->appIcon) { RemoveAppIcon(g->appIcon); g->appIcon = NULL; }
     if (g->appPort) while ((m = GetMsg(g->appPort))) ReplyMsg(m);
     g->iconified = FALSE;
-    buildWindow(g);                              /* restores savePat/savePath */
+    if (!buildWindow(g))                         /* restores savePat/savePath */
+        g->closeReq = TRUE;      /* window gone, AppIcon already removed:
+                                  * exit cleanly rather than zombie-Wait */
 }
 
 /* ------------------------------------------------------------------ */
@@ -518,7 +557,8 @@ static void eventLoop(struct Gui *g)
                     done = TRUE;
                     break;
                 case IDCMP_GADGETUP:
-                    if (gad->GadgetID == GAD_SEARCH) {
+                    if (gad->GadgetID == GAD_SEARCH ||
+                        gad->GadgetID == GAD_PATTERN) {  /* Enter in Find = Search */
                         doSearch(g);
                         if (g->closeReq) done = TRUE;
                     } else if (gad->GadgetID == GAD_PICK) {
@@ -534,13 +574,17 @@ static void eventLoop(struct Gui *g)
                         ud = (ULONG)GTMENUITEM_USERDATA(it);
                         if (ud == MENU_ICONIFY)   doIconify(g);
                         else if (ud == MENU_QUIT) done = TRUE;
+                        if (g->closeReq)          done = TRUE;
                         if (g->iconified || done) break;
                         mn = it->NextSelect;
                     }
                     break;
                 }
                 case IDCMP_NEWSIZE:
-                    relayout(g);
+                    /* defer: relaying out here frees gadgets that later-queued
+                     * messages in this same drain still reference (stale gad).
+                     * Rebuild once the queue is fully drained, below. */
+                    g->resizePending = TRUE;
                     break;
                 case IDCMP_REFRESHWINDOW:
                     GT_BeginRefresh(g->win);
@@ -551,6 +595,12 @@ static void eventLoop(struct Gui *g)
                 }
                 if (g->iconified || done) break;  /* window gone / quitting */
             }
+            /* apply a deferred resize now that the queue is drained and every
+             * message referencing the old gadgets has been handled */
+            if (g->win && !done && !g->iconified && g->resizePending) {
+                g->resizePending = FALSE;
+                relayout(g);
+            }
         }
 
         /* ---- AppIcon clicked: restore the window ---- */
@@ -558,7 +608,10 @@ static void eventLoop(struct Gui *g)
             struct Message *m;
             BOOL wake = FALSE;
             while ((m = GetMsg(g->appPort))) { ReplyMsg(m); wake = TRUE; }
-            if (wake && g->iconified) doUniconify(g);
+            if (wake && g->iconified) {
+                doUniconify(g);
+                if (g->closeReq) done = TRUE;    /* restore failed */
+            }
         }
     }
 }

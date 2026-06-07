@@ -15,7 +15,7 @@
 struct Matcher {
     BOOL  useWild;        /* TRUE -> MatchPatternNoCase, FALSE -> substring */
     UBYTE parsed[512];    /* tokenised pattern for MatchPatternNoCase       */
-    char  lower[140];     /* lower-cased pattern for the substring path     */
+    char  lower[208];     /* lower-cased pattern (>= GUI GTST_MaxChars 200) */
 };
 
 /* Called for every match. Return FALSE to abort the whole search. */

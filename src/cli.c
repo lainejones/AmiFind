@@ -18,14 +18,19 @@
 
 unsigned long __stack = 60000;   /* force a generous stack (deep recursion) */
 
+/* AmigaDOS version cookie (the C: Version command / $VER reads this) */
+static const char verstag[] __attribute__((used)) =
+    "$VER: AmiFind 1.0 (07.06.2026)";
+
 #define TEMPLATE "PATTERN/A,PATH"
 enum { ARG_PATTERN, ARG_PATH, ARG_COUNT };
 
 static BOOL cliPoll(APTR user)
 {
     (void)user;
-    /* SIGBREAKF_CTRL_C set -> user hit Ctrl-C */
-    return (SetSignal(0L, 0L) & SIGBREAKF_CTRL_C) ? TRUE : FALSE;
+    /* read AND clear CTRL_C so the break is consumed (the shell / a later run
+     * won't see a stale break flag) */
+    return (SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C) ? TRUE : FALSE;
 }
 
 static BOOL cliFound(CONST_STRPTR path, BOOL isDir, LONG size, APTR user)
@@ -70,6 +75,7 @@ int main(void)
             Printf("\n%ld match(es) - scanned %ld dirs, %ld files%s\n",
                    (LONG)st.matches, (LONG)st.dirsScanned,
                    (LONG)st.filesScanned, (LONG)(st.aborted ? " (aborted)" : ""));
+            if (st.aborted) rc = RETURN_WARN;    /* 5: stopped via Ctrl-C */
         }
     }
 

@@ -104,17 +104,27 @@ static void recurse(struct Ctx *c, BPTR lock)
                 }
 
                 plen = (LONG)strlen(c->path);
-                if (!AddPart((STRPTR)c->path, fib->fib_FileName, (ULONG)sizeof c->path))
+                if (!AddPart((STRPTR)c->path, fib->fib_FileName, (ULONG)sizeof c->path)) {
+                    c->path[plen] = '\0';    /* AddPart may have mutated the
+                                              * buffer before failing; restore
+                                              * or the rest of this dir scans
+                                              * against a corrupted base path */
                     continue;                /* full path would overflow   */
+                }
 
                 if (fib->fib_DirEntryType > 0) {
+                    LONG det = fib->fib_DirEntryType;
                     c->st->dirsScanned++;
                     if (matcherMatch(c->m, fib->fib_FileName)) {
                         c->st->matches++;
                         if (!c->found(c->path, TRUE, fib->fib_Size, c->foundUser))
                             c->stop = TRUE;
                     }
-                    if (!c->stop) {
+                    /* Report links but never recurse into them: a soft link or
+                     * link-dir can point outside the root (re-scanning a whole
+                     * volume, duplicate hits) or back at an ancestor (loops
+                     * until AddPart caps the path). Only descend real dirs. */
+                    if (!c->stop && det != ST_SOFTLINK && det != ST_LINKDIR) {
                         BPTR child = Lock((STRPTR)c->path, ACCESS_READ);
                         if (child) {
                             recurse(c, child);
@@ -167,7 +177,12 @@ LONG searchTree(CONST_STRPTR rootPath, struct Matcher *m,
     c.path[sizeof c.path - 1] = '\0';
 
     lock = Lock((STRPTR)rootPath, ACCESS_READ);
-    if (!lock) return IoErr();
+    if (!lock) {
+        LONG e = IoErr();            /* never return 0 (= success) on a failed
+                                      * Lock - a handler that forgets to set
+                                      * IoErr would otherwise look like 0 hits */
+        return e ? e : ERROR_OBJECT_NOT_FOUND;
+    }
 
     recurse(&c, lock);
     UnLock(lock);

@@ -1,6 +1,27 @@
 # AmiFind — Code Review
 
-Scope: `src/cli.c`, `src/finder.c`, `src/finder.h`, `src/gui.c`, `src/mintest.c`, `src/crashtest.c`, `src/trapcatch.c`, `build.sh`, `README.md`. All read in full. No files modified.
+Scope: `src/cli.c`, `src/finder.c`, `src/finder.h`, `src/gui.c`, `src/mintest.c`, `src/crashtest.c`, `src/trapcatch.c`, `build.sh`, `README.md`. All read in full.
+
+## 0. STATUS (2026-06-07 — fixes applied)
+
+Fixed and rebuilt clean; CLI re-verified under vamos (substring/wildcard/no-match/bad-path).
+
+- **H1 fixed** — `recurse()` restores `c->path[plen]` before the `continue` on AddPart failure.
+- **H2 fixed** — `doIconify`/`doUniconify` set `closeReq` (clean exit) if `buildWindow()` fails, instead of zombie-`Wait()`ing on the AppIcon port; `eventLoop` honours it.
+- **H3 fixed** — `relayout()` frees the partial list and NULLs every gadget pointer when `makeGadgets()` fails mid-chain.
+- **M1 fixed** — `IDCMP_NEWSIZE` no longer relayouts mid-drain (which freed gadgets that later-queued messages still referenced); it sets `resizePending` and relayout happens once the queue is fully drained.
+- **M2 fixed** — the walker reports but no longer recurses into `ST_SOFTLINK`/`ST_LINKDIR`, so a link can't escape the root or loop.
+- **M3 fixed** — a resize during a running search is captured (`resizePending`) and applied after the scan, instead of being silently dropped.
+- **L1 fixed** — `Matcher.lower` is now 208 bytes (≥ the GUI's `GTST_MaxChars` 200) so plain patterns aren't truncated at 139.
+- **L2 fixed** — `cliPoll` reads *and clears* `SIGBREAKF_CTRL_C`; an aborted CLI search returns `RETURN_WARN` (5).
+- **L3 fixed** — `addResult` sets an `outOfMem` flag on `AllocVec` failure; the status line then says "(truncated: low mem)" so the count and listview don't silently disagree.
+- **L4 fixed** — `closeWin` NULLs the gadget pointers and `setStatus` guards on `g->win`.
+- **L5 fixed** — `searchTree` returns `ERROR_OBJECT_NOT_FOUND` rather than 0 when a Lock fails without setting `IoErr`.
+- **L6 fixed** — the listview height is clamped (tall fonts could drive it ≤ 0 → CreateGadget failure → the H3 cascade).
+- **Nit fixed** — Enter in the Find field now starts a search.
+- **Size** — `build.sh`: `-O2` → `-Os -msmall-code`, and the redundant `-O0`/min diagnostic builds dropped. CLI **3,660 B**, GUI **8,400 B**. Both binaries carry a `$VER:` cookie (L9-equivalent).
+
+Still open (deliberately not changed): **M4** (trapcatch group-0 exception handling) — diagnostic scaffolding only, never linked into the release binaries; and assorted nits below (guiPoll live counter / RawDoFmt size win, EasyRequest on missing-library, ExNext I/O-error distinction).
 
 The fundamentals are solid: per-level `AllocDosObject(DOS_FIB)` keeps the FIB off the stack and gives each recursion level its own ExNext cursor (correct — a shared fib would break ExNext state); every `Lock` has a matching `UnLock`; every `FreeDosObject` is paired; `closeWin()` ordering (ClearMenuStrip → FreeMenus → CloseWindow → FreeGadgets → FreeVisualInfo → UnlockPubScreen) is textbook-correct; library opens/closes balance in all paths; `__stack = 60000` covers the recursion. The issues below are mostly edge cases — but several are real.
 

@@ -120,10 +120,54 @@ def restore():
         shutil.rmtree(AFT)
     print("restored original boot files; AFtest removed")
 
+# --- clean OS3.2 box (DH0: = /mnt/c/Amiga/Clean 030 323): launch the GUI for a
+#     visual test, mirroring AmiGrep's setupgui. Reversible (.affbak backup). ---
+CLEAN     = "/mnt/c/Amiga/Clean 030 323"
+CLEAN_SS  = os.path.join(CLEAN, "S", "Startup-Sequence")
+CLEAN_DST = os.path.join(CLEAN, "AmiFind")
+CLEAN_MARK = ";AFFGUI"
+
+def deploy_clean():
+    os.makedirs(CLEAN_DST, exist_ok=True)
+    for name in ("AmiFind", "AmiFindGUI", "AmiFindGUI.info"):
+        src = os.path.join(OUT, name)
+        if os.path.exists(src):
+            shutil.copyfile(src, os.path.join(CLEAN_DST, name))
+            print("deployed", name)
+    print("-> DH0:AmiFind/ (clean 030 box)")
+
+def setupgui():
+    """Deploy to the clean box and auto-run AmiFindGUI on next boot."""
+    deploy_clean()
+    if not os.path.exists(CLEAN_SS + ".affbak"):
+        shutil.copyfile(CLEAN_SS, CLEAN_SS + ".affbak")
+    lines = [l for l in read(CLEAN_SS).split("\n") if CLEAN_MARK not in l]
+    block = [CLEAN_MARK + " begin", "Wait 2",
+             "Run DH0:AmiFind/AmiFindGUI", CLEAN_MARK + " end"]
+    out, done = [], False
+    for ln in lines:
+        out.append(ln)
+        if (not done) and ln.strip().lower().startswith("loadwb"):
+            out.extend(block); done = True
+    if not done:
+        out.extend(block)
+    write(CLEAN_SS, "\n".join(out))
+    print("setupgui: AmiFindGUI will open on next boot of the clean 030 box")
+
+def restoregui():
+    if os.path.exists(CLEAN_SS + ".affbak"):
+        shutil.copyfile(CLEAN_SS + ".affbak", CLEAN_SS)
+        os.remove(CLEAN_SS + ".affbak")
+        print("restored clean-box Startup-Sequence")
+    else:
+        print("(no clean-box backup to restore)")
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "setup":      setup()
-    elif cmd == "setupmu":  setupmu()
-    elif cmd == "use":      use(sys.argv[2])
-    elif cmd == "restore":  restore()
+    if cmd == "setup":         setup()
+    elif cmd == "setupmu":     setupmu()
+    elif cmd == "use":         use(sys.argv[2])
+    elif cmd == "restore":     restore()
+    elif cmd == "setupgui":    setupgui()
+    elif cmd == "restoregui":  restoregui()
     else: sys.exit(__doc__)

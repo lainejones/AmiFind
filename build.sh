@@ -26,6 +26,11 @@ $CC $CFLAGS    -o out/AmiFindMin     src/mintest.c
 $CC $CFLAGS -g -o out/AmiFindGUI.dbg src/gui.c src/finder.c
 m68k-amigaos-objdump -dS out/AmiFindGUI.dbg > out/AmiFindGUI.dis 2>/dev/null || true
 
-m68k-amigaos-strip out/AmiFind out/AmiFindGUI out/AmiFindGUI_O0 out/AmiFindMin || true
+# strip each file in its OWN invocation: m68k-amigaos-strip corrupts the hunk
+# reloc table of every file after the first when given several at once (libnix
+# startup jumps to garbage, guru #8000000x pre-main). See amiga-gcc-strip-multifile-bug.
+for f in out/AmiFind out/AmiFindGUI out/AmiFindGUI_O0 out/AmiFindMin; do
+    m68k-amigaos-strip "$f" || true
+done
 ls -l out
 echo "Done."

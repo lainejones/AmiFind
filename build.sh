@@ -10,20 +10,19 @@ CFLAGS="-Os -msmall-code -noixemul -Wall -Wno-pointer-sign -fomit-frame-pointer"
 mkdir -p out
 
 echo "== AmiFind (CLI) =="
-$CC $CFLAGS    -o out/AmiFind        src/cli.c src/finder.c
+$CC $CFLAGS -s -o out/AmiFind        src/cli.c src/finder.c
 
 echo "== AmiFindGUI (optimised) =="
-$CC $CFLAGS    -o out/AmiFindGUI     src/gui.c src/finder.c
+$CC $CFLAGS -s -o out/AmiFindGUI     src/gui.c src/finder.c
 
 # keep an unstripped + disassembly of the GUI for crash mapping (diagnostic)
 $CC $CFLAGS -g -o out/AmiFindGUI.dbg src/gui.c src/finder.c
 m68k-amigaos-objdump -dS out/AmiFindGUI.dbg > out/AmiFindGUI.dis 2>/dev/null || true
 
-# strip each file in its OWN invocation: m68k-amigaos-strip corrupts the hunk
-# reloc table of every file after the first when given several at once (libnix
-# startup jumps to garbage, guru #8000000x pre-main). See amiga-gcc-strip-multifile-bug.
-for f in out/AmiFind out/AmiFindGUI; do
-    m68k-amigaos-strip "$f" || true
-done
+# Strip at LINK time with -s (above), NEVER the standalone m68k-amigaos-strip:
+# the rebuilt binutils (amiga-2.46) strip CORRUPTS the hunk reloc table even for
+# a single file -> wild-jump guru 8000000B at real timing. -s uses ld's correct
+# stripping. (Older binutils only mangled multi-file strips; the 2026-07 rebuild
+# is worse.) See the reference_amiga_toolchain_wsl memory.
 ls -l out
 echo "Done."

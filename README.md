@@ -14,6 +14,20 @@ Built with amiga-gcc (`m68k-amigaos-gcc`) under WSL — pure NDK, no MUI/ReActio
     build.sh                  build both with amiga-gcc
     out/                      compiled AmigaOS executables
 
+## Installing
+
+Unpack the **.lha** wherever you keep tools (`LhA x AmiFind-1.0.1.lha Work:`), open the
+AmiFind drawer and double-click **AmiFindGUI**. For the CLI version in any Shell, copy it
+to `C:`:
+
+    Copy AmiFind/AmiFind C:
+
+From the **.zip** instead: a zip can't store AmigaDOS protection bits, so the programs
+arrive without their `e` (executable) flag and won't run until you set it:
+
+    Protect AmiFind/AmiFind +e
+    Protect AmiFind/AmiFindGUI +e
+
 ## Build
 
 From Windows, inside WSL:

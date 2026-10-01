@@ -20,7 +20,7 @@ unsigned long __stack = 60000;   /* force a generous stack (deep recursion) */
 
 /* AmigaDOS version cookie (the C: Version command / $VER reads this) */
 static const char verstag[] __attribute__((used)) =
-    "$VER: AmiFind 1.0 (07.06.2026)";
+    "$VER: AmiFind 1.1 (01.10.2026)";
 
 #define TEMPLATE "PATTERN/A,PATH"
 enum { ARG_PATTERN, ARG_PATH, ARG_COUNT };

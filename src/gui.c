@@ -46,7 +46,7 @@ unsigned long __stack = 60000;   /* force a generous stack (deep recursion) */
 
 /* AmigaDOS version cookie (the C: Version command / $VER reads this) */
 static const char verstag[] __attribute__((used)) =
-    "$VER: AmiFindGUI 1.0 (07.06.2026)";
+    "$VER: AmiFindGUI 1.1 (01.10.2026)";
 
 /* --- temporary boot-trace: writes progress markers to SYS:AFtest/trace --- */
 static BPTR g_tr = 0;

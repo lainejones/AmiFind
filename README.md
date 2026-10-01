@@ -16,7 +16,7 @@ Built with amiga-gcc (`m68k-amigaos-gcc`) under WSL — pure NDK, no MUI/ReActio
 
 ## Installing
 
-Unpack the **.lha** wherever you keep tools (`LhA x AmiFind-1.0.1.lha Work:`), open the
+Unpack the **.lha** wherever you keep tools (`LhA x AmiFind-1.1.lha Work:`), open the
 AmiFind drawer and double-click **AmiFindGUI**. For the CLI version in any Shell, copy it
 to `C:`:
 

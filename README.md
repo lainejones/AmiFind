@@ -1,6 +1,6 @@
 # AmiFind
 
-A file-search tool for AmigaOS 3.2 (and any 3.x). Recurses a volume, assign,
+A file-search tool for AmigaOS 2.04 and newer (tested on 3.1 and 3.2). Recurses a volume, assign,
 or directory and lists every file/drawer whose name matches a pattern.
 Ships as a CLI (`AmiFind`) and a GadTools GUI (`AmiFindGUI`).
 
@@ -12,7 +12,9 @@ Built with amiga-gcc (`m68k-amigaos-gcc`) under WSL — pure NDK, no MUI/ReActio
     src/cli.c                 command-line front end
     src/gui.c                 GadTools GUI front end
     build.sh                  build both with amiga-gcc
-    out/                      compiled AmigaOS executables
+    icons/                    the shipped icons: AmiFindGUI.info, and drawer.info
+                              (goes beside the package drawer as AmiFind.info)
+    out/                      compiled AmigaOS executables (not in git)
 
 ## Installing
 
@@ -34,8 +36,14 @@ From Windows, inside WSL:
 
     wsl -e bash -lc 'cd /mnt/c/projects/AmiFind && sh build.sh'
 
-Outputs `out/AmiFind` and `out/AmiFindGUI` (AmigaOS m68k hunk executables).
-Copy them to your Amiga / emulator and run.
+Outputs `out/AmiFind` and `out/AmiFindGUI` (AmigaOS m68k hunk executables) and
+copies `icons/AmiFindGUI.info` beside the GUI. Copy them to your Amiga / emulator
+and run.
+
+The release package is an `AmiFind` drawer holding `AmiFind`, `AmiFindGUI`,
+`AmiFindGUI.info` and `README.md`, with `icons/drawer.info` beside the drawer as
+`AmiFind.info` (without it the unpacked drawer is invisible on Workbench). The
+CLI `AmiFind` ships without an icon.
 
 ## CLI usage
 
@@ -61,24 +69,24 @@ Run `AmiFindGUI` (from Workbench or Shell). Enter a **Pattern** and a
 listview; the status line shows the match count. **Stop** (or closing the
 window) aborts a running search. Matching is identical to the CLI.
 
-## Icons (reusable generator)
+## Icons
 
-The `.info` icons are built with a self-contained Python generator — no
-external tools (png2icon / amitools) required. It emits a classic OS3.x
-`WBTOOL` `DiskObject` with a 2-bitplane `Image` in the 4-colour Workbench
-palette, drawn procedurally. The generator is **shared across projects** in
-`C:\projects\tools` (`/mnt/c/projects/tools`), not inside this project:
+The shipped icons are committed in `icons/`. Only the GUI has a program icon;
+the CLI `AmiFind` ships without one. `icons/AmiFindGUI.info` is a `WBTOOL`
+icon with an OS 3.5 colour image plus a planar fallback, built with a
+self-contained Python generator (no png2icon / amitools needed) that lives in
+the shared Amiga tools folder next to this project (`../tools`), not in this
+repository:
 
-    ../tools/makeicon.py   build the icons     python3 ../tools/makeicon.py A.info B.info
-    ../tools/dumpicon.py   verify one (ASCII)  python3 ../tools/dumpicon.py A.info
+    ../tools/makeicon_amifind.py   build the GUI icon
+    ../tools/dumpicon.py           verify one (ASCII)
 
-Regenerate both AmiFind icons:
+Regenerate it (the output is byte-identical to the shipped icon):
 
-    wsl -e bash -lc 'cd /mnt/c/projects/AmiFind && python3 ../tools/makeicon.py out/AmiFind.info out/AmiFindGUI.info'
+    wsl -e bash -lc 'cd /mnt/c/projects/AmiFind && python3 ../tools/makeicon_amifind.py icons/AmiFindGUI.info'
 
-To reuse for another project, edit the drawing section of `makeicon.py` (the
-`rect`/`frame`/`disc`/`ring` calls) and `do_StackSize`/`WBTOOL` to taste; the
-structure-packing below it is generic to any 3.x tool icon.
+`icons/drawer.info` is the package drawer's icon, shipped beside the drawer as
+`AmiFind.info`.
 
 ## Notes
 
@@ -87,4 +95,6 @@ structure-packing below it is generic to any 3.x tool icon.
 * The GUI search is synchronous; while it runs the Stop button and close
   gadget stay responsive because the scan pumps Intuition messages between
   directory entries.
-* Requires OS 3.x (libraries opened at v37+).
+* Requires AmigaOS 2.04 or newer: the libraries are opened at v37 (asl,
+  workbench and icon are optional), and the one V39 call (`ExAllEnd`) is
+  skipped on an older dos.library. Tested on OS 3.1 and 3.2.

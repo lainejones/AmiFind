@@ -15,6 +15,10 @@ $CC $CFLAGS -s -o out/AmiFind        src/cli.c src/finder.c
 echo "== AmiFindGUI (optimised) =="
 $CC $CFLAGS -s -o out/AmiFindGUI     src/gui.c src/finder.c
 
+# the GUI's icon as shipped in the release (the CLI ships without one);
+# the package also puts icons/drawer.info beside the drawer as AmiFind.info
+cp icons/AmiFindGUI.info out/
+
 # keep an unstripped + disassembly of the GUI for crash mapping (diagnostic)
 $CC $CFLAGS -g -o out/AmiFindGUI.dbg src/gui.c src/finder.c
 m68k-amigaos-objdump -dS out/AmiFindGUI.dbg > out/AmiFindGUI.dis 2>/dev/null || true
